@@ -1,0 +1,489 @@
+export default function CKDProgressionWebpage() {
+  const { useMemo, useState } = React;
+
+  const [form, setForm] = useState({
+    name: "",
+    age: 58,
+    sex: "Male",
+    weight: 72,
+    diabetes: "Yes",
+    hypertension: "Yes",
+    smoking: "No",
+    raasBlocker: "Yes",
+    egfrFirst: 42,
+    egfrLast: 35,
+    uacrFirst: 320,
+    uacrLast: 410,
+    bpSys: 152,
+    bpDia: 94,
+    creatinine: 2.23,
+    hemoglobin: 10.5,
+    sodium: 138,
+    potassium: 4.8,
+    followupMonths: 8,
+    visitCount: 3,
+  });
+
+  const [predicted, setPredicted] = useState(false);
+
+  const update = (key, value) => setForm((p) => ({ ...p, [key]: value }));
+
+  const metrics = useMemo(() => {
+    const egfrChange = form.egfrLast - form.egfrFirst;
+    const egfrPctChange = form.egfrFirst
+      ? ((form.egfrLast - form.egfrFirst) / form.egfrFirst) * 100
+      : 0;
+    const egfrSlope = form.followupMonths
+      ? egfrChange / form.followupMonths
+      : 0;
+    const uacrChange = form.uacrLast - form.uacrFirst;
+    const uacrPctChange = form.uacrFirst
+      ? ((form.uacrLast - form.uacrFirst) / form.uacrFirst) * 100
+      : 0;
+
+    let score = 0;
+    if (form.egfrLast < 45) score += 22;
+    if (form.egfrLast < 30) score += 14;
+    if (egfrPctChange <= -20) score += 24;
+    else if (egfrPctChange <= -10) score += 14;
+    if (egfrSlope <= -1) score += 12;
+    if (form.uacrLast > 300) score += 18;
+    else if (form.uacrLast > 30) score += 8;
+    if (uacrPctChange > 20) score += 8;
+    if (form.bpSys >= 140 || form.bpDia >= 90) score += 10;
+    if (form.diabetes === "Yes") score += 8;
+    if (form.hypertension === "Yes") score += 8;
+    if (form.creatinine >= 2) score += 8;
+    if (form.hemoglobin < 11) score += 6;
+    if (form.smoking === "Yes") score += 4;
+
+    score = Math.min(100, Math.max(5, Math.round(score)));
+
+    let label = "Stable";
+    if (score >= 70) label = "Worsens rapidly";
+    else if (score >= 40) label = "Worsens slowly";
+
+    const probs = {
+      stable: Math.max(5, 100 - score),
+      slow: label === "Worsens slowly" ? Math.max(20, 100 - Math.abs(score - 55)) : Math.max(10, 55 - Math.abs(score - 55)),
+      rapid: Math.max(5, score - 20),
+    };
+
+    const total = probs.stable + probs.slow + probs.rapid;
+    const normalized = {
+      stable: Math.round((probs.stable / total) * 100),
+      slow: Math.round((probs.slow / total) * 100),
+      rapid: Math.round((probs.rapid / total) * 100),
+    };
+
+    const reasons = [];
+    if (form.egfrLast < 45) reasons.push("Low latest eGFR");
+    if (egfrPctChange <= -10) reasons.push("Significant decline in eGFR over follow-up");
+    if (form.uacrLast > 300) reasons.push("Severely increased albuminuria/UACR");
+    if (form.bpSys >= 140 || form.bpDia >= 90) reasons.push("Poor blood pressure control");
+    if (form.diabetes === "Yes") reasons.push("Diabetes history present");
+    if (form.hypertension === "Yes") reasons.push("Hypertension history present");
+    if (form.creatinine >= 2) reasons.push("Higher serum creatinine");
+    if (form.hemoglobin < 11) reasons.push("Low hemoglobin");
+
+    let ckdStage = "G1";
+    if (form.egfrLast >= 90) ckdStage = "G1";
+    else if (form.egfrLast >= 60) ckdStage = "G2";
+    else if (form.egfrLast >= 45) ckdStage = "G3a";
+    else if (form.egfrLast >= 30) ckdStage = "G3b";
+    else if (form.egfrLast >= 15) ckdStage = "G4";
+    else ckdStage = "G5";
+
+    return {
+      egfrChange,
+      egfrPctChange,
+      egfrSlope,
+      uacrChange,
+      uacrPctChange,
+      score,
+      label,
+      reasons,
+      ckdStage,
+      normalized,
+    };
+  }, [form]);
+
+  const riskTone =
+    metrics.label === "Worsens rapidly"
+      ? "from-rose-500 to-orange-500"
+      : metrics.label === "Worsens slowly"
+      ? "from-amber-400 to-orange-400"
+      : "from-emerald-400 to-teal-500";
+
+  const handlePredict = () => setPredicted(true);
+  const handleReset = () => {
+    setPredicted(false);
+    setForm({
+      name: "",
+      age: 58,
+      sex: "Male",
+      weight: 72,
+      diabetes: "Yes",
+      hypertension: "Yes",
+      smoking: "No",
+      raasBlocker: "Yes",
+      egfrFirst: 42,
+      egfrLast: 35,
+      uacrFirst: 320,
+      uacrLast: 410,
+      bpSys: 152,
+      bpDia: 94,
+      creatinine: 2.23,
+      hemoglobin: 10.5,
+      sodium: 138,
+      potassium: 4.8,
+      followupMonths: 8,
+      visitCount: 3,
+    });
+  };
+
+  const Field = ({ label, children }) => (
+    <label className="block space-y-2">
+      <span className="text-sm font-medium text-slate-300">{label}</span>
+      {children}
+    </label>
+  );
+
+  const Input = ({ type = "text", value, onChange, min, step }) => (
+    <input
+      type={type}
+      value={value}
+      min={min}
+      step={step}
+      onChange={onChange}
+      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30"
+    />
+  );
+
+  const Select = ({ value, onChange, options }) => (
+    <select
+      value={value}
+      onChange={onChange}
+      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-slate-100 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/30"
+    >
+      {options.map((opt) => (
+        <option key={opt} value={opt}>
+          {opt}
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_30%),linear-gradient(180deg,#020617,#0f172a,#020617)] text-white">
+      <div className="mx-auto max-w-7xl px-6 py-8 lg:px-10">
+        <header className="mb-8 overflow-hidden rounded-[32px] border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl">
+          <div className="grid gap-8 px-8 py-10 lg:grid-cols-[1.4fr_0.9fr] lg:px-10">
+            <div>
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-cyan-300">
+                AI Clinical Decision-Support Prototype
+              </div>
+              <h1 className="max-w-3xl text-4xl font-bold leading-tight text-white md:text-5xl">
+                Chronic Kidney Disease Progression Predictor Dashboard
+              </h1>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300 md:text-lg">
+                An advanced web interface for predicting whether CKD is likely to remain stable,
+                worsen slowly, or worsen rapidly using longitudinal kidney markers, vital signs,
+                and clinical history.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3 text-sm text-slate-300">
+                {[
+                  "Longitudinal trend analysis",
+                  "Risk probability output",
+                  "Explainable factors",
+                  "CKD stage display",
+                ].map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+              <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-5">
+                <div className="text-sm text-slate-400">Current CKD Stage</div>
+                <div className="mt-2 text-3xl font-bold text-cyan-300">{metrics.ckdStage}</div>
+                <div className="mt-1 text-sm text-slate-400">Based on latest eGFR</div>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-5">
+                <div className="text-sm text-slate-400">Follow-up Visits</div>
+                <div className="mt-2 text-3xl font-bold text-white">{form.visitCount}</div>
+                <div className="mt-1 text-sm text-slate-400">Across {form.followupMonths} months</div>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-slate-950/40 p-5">
+                <div className="text-sm text-slate-400">Estimated Risk Score</div>
+                <div className="mt-2 text-3xl font-bold text-white">{metrics.score}%</div>
+                <div className="mt-1 text-sm text-slate-400">Prototype score preview</div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="grid gap-8 lg:grid-cols-[1.08fr_0.92fr]">
+          <section className="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl md:p-7">
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-semibold text-white">Patient Clinical Input</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Enter repeated kidney markers and clinical factors to generate progression risk.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-right">
+                <div className="text-xs uppercase tracking-widest text-slate-500">Prediction Model</div>
+                <div className="mt-1 text-sm font-semibold text-cyan-300">
+                  CKD Multi-Class Predictor
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <Field label="Patient Name / ID">
+                <Input value={form.name} onChange={(e) => update("name", e.target.value)} />
+              </Field>
+              <Field label="Age">
+                <Input type="number" min="1" value={form.age} onChange={(e) => update("age", Number(e.target.value))} />
+              </Field>
+              <Field label="Sex">
+                <Select value={form.sex} onChange={(e) => update("sex", e.target.value)} options={["Male", "Female"]} />
+              </Field>
+              <Field label="Weight (kg)">
+                <Input type="number" min="1" value={form.weight} onChange={(e) => update("weight", Number(e.target.value))} />
+              </Field>
+              <Field label="Diabetes">
+                <Select value={form.diabetes} onChange={(e) => update("diabetes", e.target.value)} options={["Yes", "No"]} />
+              </Field>
+              <Field label="Hypertension">
+                <Select value={form.hypertension} onChange={(e) => update("hypertension", e.target.value)} options={["Yes", "No"]} />
+              </Field>
+              <Field label="Smoking Status">
+                <Select value={form.smoking} onChange={(e) => update("smoking", e.target.value)} options={["Yes", "No"]} />
+              </Field>
+              <Field label="RAAS Blocker">
+                <Select value={form.raasBlocker} onChange={(e) => update("raasBlocker", e.target.value)} options={["Yes", "No"]} />
+              </Field>
+              <Field label="Visit Count">
+                <Input type="number" min="2" value={form.visitCount} onChange={(e) => update("visitCount", Number(e.target.value))} />
+              </Field>
+              <Field label="Follow-up Months">
+                <Input type="number" min="1" value={form.followupMonths} onChange={(e) => update("followupMonths", Number(e.target.value))} />
+              </Field>
+              <Field label="First eGFR">
+                <Input type="number" min="1" value={form.egfrFirst} onChange={(e) => update("egfrFirst", Number(e.target.value))} />
+              </Field>
+              <Field label="Latest eGFR">
+                <Input type="number" min="1" value={form.egfrLast} onChange={(e) => update("egfrLast", Number(e.target.value))} />
+              </Field>
+              <Field label="First UACR">
+                <Input type="number" min="0" value={form.uacrFirst} onChange={(e) => update("uacrFirst", Number(e.target.value))} />
+              </Field>
+              <Field label="Latest UACR">
+                <Input type="number" min="0" value={form.uacrLast} onChange={(e) => update("uacrLast", Number(e.target.value))} />
+              </Field>
+              <Field label="Systolic BP">
+                <Input type="number" min="50" value={form.bpSys} onChange={(e) => update("bpSys", Number(e.target.value))} />
+              </Field>
+              <Field label="Diastolic BP">
+                <Input type="number" min="30" value={form.bpDia} onChange={(e) => update("bpDia", Number(e.target.value))} />
+              </Field>
+              <Field label="Serum Creatinine">
+                <Input type="number" min="0" step="0.01" value={form.creatinine} onChange={(e) => update("creatinine", Number(e.target.value))} />
+              </Field>
+              <Field label="Hemoglobin">
+                <Input type="number" min="0" step="0.1" value={form.hemoglobin} onChange={(e) => update("hemoglobin", Number(e.target.value))} />
+              </Field>
+              <Field label="Sodium">
+                <Input type="number" min="0" step="0.1" value={form.sodium} onChange={(e) => update("sodium", Number(e.target.value))} />
+              </Field>
+              <Field label="Potassium">
+                <Input type="number" min="0" step="0.1" value={form.potassium} onChange={(e) => update("potassium", Number(e.target.value))} />
+              </Field>
+            </div>
+
+            <div className="mt-7 flex flex-wrap gap-3">
+              <button
+                onClick={handlePredict}
+                className="rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:scale-[1.02] hover:bg-cyan-300"
+              >
+                Generate Prediction
+              </button>
+              <button
+                onClick={handleReset}
+                className="rounded-2xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Reset Demo Data
+              </button>
+            </div>
+          </section>
+
+          <section className="space-y-6">
+            <div className="overflow-hidden rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl md:p-7">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-semibold text-white">Prediction Summary</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Risk category, score, and explainable clinical signals.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-2 text-sm text-slate-300">
+                  {predicted ? "Prediction generated" : "Awaiting input"}
+                </div>
+              </div>
+
+              <div className={`mt-6 rounded-[28px] bg-gradient-to-r ${riskTone} p-[1px]`}>
+                <div className="rounded-[27px] bg-slate-950/90 p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-5">
+                    <div>
+                      <div className="text-sm uppercase tracking-[0.25em] text-slate-400">Predicted progression</div>
+                      <div className="mt-2 text-3xl font-bold text-white">{predicted ? metrics.label : "Not generated yet"}</div>
+                      <div className="mt-2 text-sm text-slate-400">
+                        {predicted
+                          ? `Patient ${form.name || "case"} is currently estimated at ${metrics.score}% overall progression risk.`
+                          : "Complete the form and click Generate Prediction to see the result."}
+                      </div>
+                    </div>
+                    <div className="flex h-28 w-28 items-center justify-center rounded-full border border-white/10 bg-white/5 text-center">
+                      <div>
+                        <div className="text-3xl font-bold text-white">{predicted ? metrics.score : 0}%</div>
+                        <div className="text-xs uppercase tracking-widest text-slate-400">Risk</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                {[
+                  { label: "Stable", value: metrics.normalized.stable },
+                  { label: "Slow", value: metrics.normalized.slow },
+                  { label: "Rapid", value: metrics.normalized.rapid },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-3xl border border-white/10 bg-slate-950/40 p-4">
+                    <div className="flex items-center justify-between text-sm text-slate-300">
+                      <span>{item.label}</span>
+                      <span>{predicted ? `${item.value}%` : "0%"}</span>
+                    </div>
+                    <div className="mt-3 h-3 rounded-full bg-white/10">
+                      <div
+                        className="h-3 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-500"
+                        style={{ width: `${predicted ? item.value : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <div className="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl">
+                <h3 className="text-xl font-semibold text-white">Clinical Trend Analytics</h3>
+                <div className="mt-5 space-y-4">
+                  {[
+                    {
+                      name: "eGFR Change",
+                      value: `${metrics.egfrChange.toFixed(1)}`,
+                      helper: `${metrics.egfrPctChange.toFixed(1)}% across follow-up`,
+                    },
+                    {
+                      name: "eGFR Slope / Month",
+                      value: `${metrics.egfrSlope.toFixed(2)}`,
+                      helper: "Lower values indicate faster decline",
+                    },
+                    {
+                      name: "UACR Change",
+                      value: `${metrics.uacrChange.toFixed(1)}`,
+                      helper: `${metrics.uacrPctChange.toFixed(1)}% albuminuria shift`,
+                    },
+                    {
+                      name: "Latest BP",
+                      value: `${form.bpSys}/${form.bpDia}`,
+                      helper: "Blood pressure control status",
+                    },
+                  ].map((card) => (
+                    <div key={card.name} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                      <div className="text-sm text-slate-400">{card.name}</div>
+                      <div className="mt-1 text-2xl font-bold text-white">{predicted ? card.value : "--"}</div>
+                      <div className="mt-1 text-sm text-slate-500">{card.helper}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl">
+                <h3 className="text-xl font-semibold text-white">Explainable Output</h3>
+                <div className="mt-5 space-y-3">
+                  {(predicted ? metrics.reasons : ["Prediction reasons will appear here after model inference."]).map((reason, idx) => (
+                    <div
+                      key={`${reason}-${idx}`}
+                      className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-950/40 p-4"
+                    >
+                      <div className="mt-1 h-2.5 w-2.5 rounded-full bg-cyan-400" />
+                      <div>
+                        <div className="font-medium text-white">{reason}</div>
+                        <div className="mt-1 text-sm text-slate-400">
+                          Contributes to the risk interpretation shown in the dashboard.
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[32px] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-xl">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-semibold text-white">Prototype Recommendation Panel</h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Educational guidance output for project demonstration only.
+                  </p>
+                </div>
+                <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-200">
+                  Not Medical Advice
+                </span>
+              </div>
+
+              <div className="mt-5 rounded-3xl border border-white/10 bg-slate-950/40 p-5 text-slate-300">
+                {!predicted && (
+                  <p>
+                    Generate a prediction to see a follow-up recommendation panel based on the
+                    current patient profile.
+                  </p>
+                )}
+                {predicted && metrics.label === "Stable" && (
+                  <p>
+                    Suggested prototype output: kidney function appears relatively stable in this
+                    entry pattern. Continue routine monitoring, periodic lab review, and trend
+                    tracking of eGFR, albuminuria, and blood pressure.
+                  </p>
+                )}
+                {predicted && metrics.label === "Worsens slowly" && (
+                  <p>
+                    Suggested prototype output: patient may require closer follow-up and repeat lab
+                    monitoring. Review eGFR decline trend, albuminuria control, and blood pressure
+                    management in the next scheduled follow-up.
+                  </p>
+                )}
+                {predicted && metrics.label === "Worsens rapidly" && (
+                  <p>
+                    Suggested prototype output: higher-risk progression pattern detected. This demo
+                    flags the case for urgent clinical review of declining eGFR, albuminuria, and
+                    associated comorbid factors.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}

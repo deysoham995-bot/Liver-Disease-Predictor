@@ -1,0 +1,16 @@
+{
+    "python.defaultInterpreterPath": "./venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python.formatting.provider": "black",
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.linting.flake8Enabled": false,
+    "editor.formatOnSave": true,
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/.pytest_cache": true
+    },
+    "python.analysis.extraPaths": [
+        "src/"
+    ]
+}
